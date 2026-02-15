@@ -190,11 +190,34 @@ router.delete('/:id', authenticate, requirePermission('user:delete'), asyncHandl
 router.post('/:id/reset-password', authenticate, requirePermission('user:update'), asyncHandler(async (req: AuthRequest, res) => {
   uuidSchema.parse(req.params.id);
   
-  // Generate cryptographically secure random password
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  const passwordArray = Array.from({ length: 12 }, () => 
-    chars.charAt(crypto.randomInt(0, chars.length))
-  );
+  // Generate cryptographically secure random password that includes all character categories
+  const upperChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lowerChars = 'abcdefghijklmnopqrstuvwxyz';
+  const digitChars = '0123456789';
+  const specialChars = '!@#$%^&*';
+  const allChars = upperChars + lowerChars + digitChars + specialChars;
+  const passwordLength = 12;
+
+  // Ensure at least one character from each category
+  const passwordArray: string[] = [
+    upperChars.charAt(crypto.randomInt(0, upperChars.length)),
+    lowerChars.charAt(crypto.randomInt(0, lowerChars.length)),
+    digitChars.charAt(crypto.randomInt(0, digitChars.length)),
+    specialChars.charAt(crypto.randomInt(0, specialChars.length)),
+  ];
+
+  // Fill the remaining characters with random choices from the full set
+  while (passwordArray.length < passwordLength) {
+    passwordArray.push(allChars.charAt(crypto.randomInt(0, allChars.length)));
+  }
+
+  // Shuffle the password characters using a cryptographically strong shuffle
+  for (let i = passwordArray.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    const temp = passwordArray[i];
+    passwordArray[i] = passwordArray[j];
+    passwordArray[j] = temp;
+  }
   const newPassword = passwordArray.join('');
   
   const hashedPassword = await bcrypt.hash(newPassword, 12);
