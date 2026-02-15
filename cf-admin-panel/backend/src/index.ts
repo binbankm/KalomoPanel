@@ -82,7 +82,10 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
-    cache: cache.stats(),
+    // Expose only non-sensitive aggregate cache information on the public health endpoint
+    cache: {
+      enabled: true,
+    },
   };
   res.json(healthStatus);
 });
