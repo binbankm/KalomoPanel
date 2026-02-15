@@ -1,6 +1,78 @@
-# Cloudflare 管理面板
+# KalomoPanel - Cloudflare 管理面板
 
 一个功能完整的 Cloudflare 管理面板，支持域名、DNS、SSL、防火墙、Workers、KV、Pages、R2 等全功能管理，并内置 RBAC 权限系统。
+
+## ✨ 主要功能
+
+### 📊 仪表盘
+- 实时统计数据展示（域名、DNS记录、Workers、KV、Pages、R2）
+- 快速操作入口
+- 系统状态监控
+- 智能加载状态和骨架屏
+
+### 🌐 域名管理
+- 查看所有 Cloudflare 域名
+- 域名详细信息展示
+- 快速域名状态切换
+- 域名分析数据
+
+### 🔧 DNS 管理
+- 完整的 DNS 记录管理（A、AAAA、CNAME、MX、TXT、SRV 等）
+- DNS 记录批量操作
+- DNS 记录导入导出
+- 代理状态管理
+
+### 🔒 SSL/TLS 管理
+- SSL 证书查看
+- 加密模式配置
+- HSTS 设置
+- TLS 客户端认证
+
+### 🛡️ 防火墙
+- 防火墙规则管理
+- IP 访问控制列表
+- WAF 规则包配置
+- 安全事件查看
+
+### 📈 分析统计
+- 流量分析（HTTP 请求、带宽）
+- 缓存性能分析
+- 安全威胁统计
+- Bot 流量监控
+
+### ⚙️ Workers & KV
+- Cloudflare Workers 脚本管理
+- Workers 路由配置
+- KV 命名空间管理
+- 键值对 CRUD 操作
+
+### 📄 Pages & R2
+- Cloudflare Pages 项目管理
+- Pages 部署历史
+- R2 对象存储管理
+- Bucket 操作
+
+### 👥 用户与权限
+- 完整的 RBAC 权限系统
+- 角色管理（超级管理员、管理员、操作员、只读用户）
+- 用户管理
+- 操作日志审计
+
+## 📸 功能展示
+
+> 注意：由于这是一个管理面板应用，实际的界面截图需要在部署后添加。以下是主要功能页面列表：
+
+- **仪表盘** - 展示所有关键指标和快速操作入口
+- **域名管理** - 列出所有 Cloudflare 域名及其状态
+- **DNS 管理** - 完整的 DNS 记录增删改查界面
+- **SSL/TLS** - SSL 证书和加密设置管理
+- **防火墙** - 安全规则和 IP 访问控制
+- **分析统计** - 可视化的流量和安全数据
+- **Workers** - Workers 脚本管理界面
+- **KV 存储** - 键值对存储管理
+- **Pages** - Pages 项目和部署管理
+- **R2 存储** - 对象存储管理界面
+- **用户管理** - 用户和角色权限管理
 
 ## ✨ 最新增强 (2026-02)
 
@@ -17,6 +89,7 @@
 - **API 缓存** - Cloudflare API 响应缓存减少 90% 外部调用
 - **响应压缩** - gzip/deflate 压缩节省 60-80% 带宽
 - **重试逻辑** - 指数退避重试机制提高可靠性
+- **聚合 API** - 仪表盘统计数据单次 API 调用获取所有指标
 
 ### 📝 代码质量
 - **结构化日志** - 集中式日志系统，包含上下文和时间戳
@@ -24,7 +97,13 @@
 - **标准化响应** - 统一的 API 响应格式
 - **优雅关闭** - SIGTERM/SIGINT 信号处理
 
-详见 [ENHANCEMENTS.md](../ENHANCEMENTS.md) 和 [SUMMARY.md](../SUMMARY.md)
+### 🎨 UI 优化
+- **加载骨架屏** - 提供更好的加载状态反馈
+- **交互式快捷入口** - 仪表盘快速导航
+- **响应式设计** - 支持桌面和移动设备
+- **数字格式化** - 千位分隔符提升可读性
+
+详见 [ENHANCEMENTS.md](./ENHANCEMENTS.md) 和 [SUMMARY.md](./SUMMARY.md)
 
 ## 功能特性
 
@@ -171,6 +250,7 @@ cf-admin-panel/
 ### 系统监控 (新增)
 - `GET /health` - 健康检查（包含运行时间和缓存统计）
 - `GET /api/cache/stats` - 缓存统计（仅开发模式）
+- `GET /api/dashboard/stats` - 仪表盘聚合统计数据（新增）
 
 ### 用户管理
 - `GET /api/users` - 用户列表
@@ -226,6 +306,110 @@ cf-admin-panel/
 - 认证端点：5 次/15分钟（防暴力破解）
 - 标准 API：100 次/15分钟
 - 只读操作：200 次/5分钟
+
+## 🔧 故障排除
+
+### 常见问题
+
+#### 1. JWT_SECRET 启动验证失败
+```bash
+错误: JWT_SECRET must be at least 32 characters long
+
+解决方案:
+在 backend/.env 文件中设置至少 32 字符的 JWT_SECRET:
+JWT_SECRET="your-super-secret-jwt-key-minimum-32-characters-change-in-production"
+```
+
+#### 2. Cloudflare API 连接失败
+```bash
+错误: Cloudflare API request failed
+
+解决方案:
+1. 检查 CF_API_TOKEN 是否正确配置
+2. 检查 CF_ACCOUNT_ID 是否正确
+3. 验证 API Token 权限（需要 Zone:Read, DNS:Edit 等权限）
+4. 检查网络连接
+```
+
+#### 3. Docker 部署端口冲突
+```bash
+错误: Bind for 0.0.0.0:18080 failed: port is already allocated
+
+解决方案:
+修改 docker-compose.yml 中的端口映射:
+ports:
+  - "18081:80"  # 改为其他可用端口
+```
+
+#### 4. 数据库迁移错误
+```bash
+错误: Migration failed
+
+解决方案:
+cd backend
+rm -rf prisma/migrations
+rm data/dev.db
+npm run db:migrate
+npm run db:seed
+```
+
+#### 5. 前端无法连接后端
+```bash
+解决方案:
+1. 检查后端是否正常运行（访问 http://localhost:3000/health）
+2. 检查 CORS 配置（开发模式应允许 localhost:5173）
+3. 检查前端 API 基础 URL 配置
+```
+
+### 日志查看
+
+```bash
+# Docker 环境
+docker-compose logs -f backend
+docker-compose logs -f frontend
+
+# 开发环境
+# 后端日志会输出到控制台
+# 前端日志在浏览器控制台查看
+```
+
+### 性能监控
+
+```bash
+# 查看健康状态
+curl http://localhost:3000/health
+
+# 查看缓存统计（开发模式）
+curl http://localhost:3000/api/cache/stats
+```
+
+## 🤝 贡献指南
+
+欢迎提交 Issue 和 Pull Request！
+
+### 开发流程
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+### 代码规范
+
+- 使用 TypeScript 严格模式
+- 遵循现有代码风格
+- 添加必要的注释
+- 确保所有测试通过
+
+## 📋 待办事项
+
+- [ ] WebSocket 支持实时更新
+- [ ] OpenAPI/Swagger 文档自动生成
+- [ ] 多语言支持（i18n）
+- [ ] 数据导出功能（CSV、JSON）
+- [ ] 更多可视化图表
+- [ ] 移动应用支持
 
 ## 许可证
 

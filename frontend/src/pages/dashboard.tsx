@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { 
   Globe, 
   Network, 
@@ -8,10 +9,12 @@ import {
   FileText, 
   HardDrive,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  ChevronRight
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import api from '@/lib/api'
 
 interface StatsData {
@@ -33,26 +36,19 @@ const statCards = [
 ]
 
 export function DashboardPage() {
+  const navigate = useNavigate()
+  
   const { data: stats, isLoading } = useQuery<StatsData>({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
-      // 这里应该调用聚合的统计API
-      // 暂时返回模拟数据
-      const [domainsRes, workersRes, kvRes, pagesRes, bucketsRes] = await Promise.all([
-        api.get('/domains'),
-        api.get('/workers/scripts'),
-        api.get('/kv/namespaces'),
-        api.get('/pages/projects'),
-        api.get('/r2/buckets'),
-      ])
-
-      return {
-        domains: domainsRes.data?.data?.length || 0,
-        dnsRecords: 0, // 需要额外计算
-        workers: workersRes.data?.length || 0,
-        kvNamespaces: kvRes.data?.length || 0,
-        pages: pagesRes.data?.length || 0,
-        buckets: bucketsRes.data?.length || 0,
+      const response = await api.get('/dashboard/stats')
+      return response.data?.data || {
+        domains: 0,
+        dnsRecords: 0,
+        workers: 0,
+        kvNamespaces: 0,
+        pages: 0,
+        buckets: 0,
       }
     },
   })
@@ -83,12 +79,21 @@ export function DashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {isLoading ? '-' : value}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  总计数量
-                </p>
+                {isLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-20" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold">
+                      {value.toLocaleString()}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      总计数量
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           )
@@ -108,24 +113,38 @@ export function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors">
+            <div 
+              onClick={() => navigate('/domains')}
+              className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <Globe className="h-5 w-5 text-muted-foreground" />
                 <span>管理域名</span>
               </div>
-              <Badge variant="secondary">热门</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">热门</Badge>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors">
+            <div 
+              onClick={() => navigate('/dns')}
+              className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <Network className="h-5 w-5 text-muted-foreground" />
                 <span>配置DNS</span>
               </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors">
+            <div 
+              onClick={() => navigate('/firewall')}
+              className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <Shield className="h-5 w-5 text-muted-foreground" />
                 <span>防火墙规则</span>
               </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
