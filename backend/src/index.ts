@@ -20,6 +20,7 @@ import { pagesRouter } from './routes/pages';
 import { r2Router } from './routes/r2';
 import { settingsRouter } from './routes/settings';
 import { logsRouter } from './routes/logs';
+import { dashboardRouter } from './routes/dashboard';
 import { validateEnv } from './utils/validation';
 import { logger } from './utils/logger';
 import { cache } from './utils/cache';
@@ -112,6 +113,7 @@ app.use('/api/pages', standardLimiter, pagesRouter);
 app.use('/api/r2', standardLimiter, r2Router);
 app.use('/api/settings', standardLimiter, settingsRouter);
 app.use('/api/logs', standardLimiter, logsRouter);
+app.use('/api/dashboard', standardLimiter, dashboardRouter);
 
 // Error handling middleware
 app.use(errorHandler);
