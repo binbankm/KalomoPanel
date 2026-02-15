@@ -36,7 +36,7 @@ export function createError(message: string, statusCode: number = 500, code?: st
   return error;
 }
 
-export function asyncHandler(fn: Function) {
+export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
