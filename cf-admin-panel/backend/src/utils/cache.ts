@@ -89,10 +89,17 @@ class Cache {
 export const cache = new Cache();
 
 // Run cleanup every 10 minutes
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   cache.cleanup();
 }, 10 * 60 * 1000);
 
+// Allow the process to exit even if the interval is still active
+cleanupInterval.unref();
+
+// Expose a way to stop the cleanup interval (useful for tests or graceful shutdown)
+export function stopCacheCleanup(): void {
+  clearInterval(cleanupInterval);
+}
 /**
  * Cache key generators for consistent naming
  */
