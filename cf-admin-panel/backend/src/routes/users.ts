@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { prisma } from '../config/database';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { asyncHandler, createError } from '../middleware/error';
@@ -189,12 +190,12 @@ router.delete('/:id', authenticate, requirePermission('user:delete'), asyncHandl
 router.post('/:id/reset-password', authenticate, requirePermission('user:update'), asyncHandler(async (req: AuthRequest, res) => {
   uuidSchema.parse(req.params.id);
   
-  // Generate stronger random password
+  // Generate cryptographically secure random password
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  let newPassword = '';
-  for (let i = 0; i < 12; i++) {
-    newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  const passwordArray = Array.from({ length: 12 }, () => 
+    chars.charAt(crypto.randomInt(0, chars.length))
+  );
+  const newPassword = passwordArray.join('');
   
   const hashedPassword = await bcrypt.hash(newPassword, 12);
 

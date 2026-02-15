@@ -45,11 +45,21 @@ export const strongPasswordSchema = z.string()
 
 /**
  * Sanitizes user input to prevent XSS attacks
+ * Note: This is a basic implementation. For comprehensive XSS protection,
+ * consider using a library like validator.js or DOMPurify on the client side.
+ * Server-side, we rely on proper output encoding in the frontend.
  */
 export function sanitizeInput(input: string): string {
+  // Escape HTML special characters
+  // Ampersand must be escaped first to avoid double-encoding
   return input
-    .replace(/[<>]/g, '') // Remove potential HTML tags
-    .trim();
+    .trim()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
 }
 
 /**
