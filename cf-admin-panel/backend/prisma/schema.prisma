@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  name      String?
+  avatar    String?
+  status    String     @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLoginAt DateTime?
+
+  // 关联
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  
+  logs      OperationLog[]
+
+  @@map("users")
+}
+
+// 角色表
+model Role {
+  id          String @id @default(uuid())
+  name        String @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+// 权限表
+model Permission {
+  id          String @id @default(uuid())
+  code        String @unique
+  name        String
+  description String?
+  module      String // 所属模块: user, domain, dns, ssl, firewall, analytics, workers, kv, settings
+  createdAt   DateTime @default(now())
+
+  // 关联
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+// 角色权限关联表
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// 操作日志表
+model OperationLog {
+  id          String   @id @default(uuid())
+  userId      String
+  action      String   // 操作类型: CREATE, UPDATE, DELETE, VIEW, etc.
+  module      String   // 操作模块
+  resource    String   // 操作资源
+  details     String?  // 操作详情 (JSON)
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("operation_logs")
+}
+
+// 系统设置表
+model Setting {
+  id          String @id @default(uuid())
+  key         String @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// Note: SQLite doesn't support enums, using String instead
