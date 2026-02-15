@@ -6,6 +6,17 @@ import { successResponse, errorResponse } from '../utils/response';
 
 const router = Router();
 
+interface Zone {
+  id: string;
+  name: string;
+  status: string;
+}
+
+interface DNSRecordsResponse {
+  result?: any[];
+  length?: number;
+}
+
 // GET /api/dashboard/stats - Get aggregated dashboard statistics
 router.get('/stats', authenticate, async (req: AuthRequest, res) => {
   try {
@@ -15,11 +26,11 @@ router.get('/stats', authenticate, async (req: AuthRequest, res) => {
 
     // Fetch all data in parallel for better performance
     const [domainsRes, workersRes, kvRes, pagesRes, bucketsRes] = await Promise.allSettled([
-      cfRequest('/zones', { params: {} }),
-      cfRequest(`/accounts/${accountId}/workers/scripts`, { params: {} }),
-      cfRequest(`/accounts/${accountId}/storage/kv/namespaces`, { params: {} }),
-      cfRequest(`/accounts/${accountId}/pages/projects`, { params: {} }),
-      cfRequest(`/accounts/${accountId}/r2/buckets`, { params: {} }),
+      cfRequest<Zone[]>('/zones', { params: {} }),
+      cfRequest<any[]>(`/accounts/${accountId}/workers/scripts`, { params: {} }),
+      cfRequest<any[]>(`/accounts/${accountId}/storage/kv/namespaces`, { params: {} }),
+      cfRequest<any[]>(`/accounts/${accountId}/pages/projects`, { params: {} }),
+      cfRequest<any[]>(`/accounts/${accountId}/r2/buckets`, { params: {} }),
     ]);
 
     // Safely extract data from settled promises
@@ -32,9 +43,9 @@ router.get('/stats', authenticate, async (req: AuthRequest, res) => {
     // Calculate total DNS records across all zones
     let totalDnsRecords = 0;
     if (Array.isArray(domains) && domains.length > 0) {
-      const dnsPromises = domains.slice(0, 10).map((domain: any) => 
-        cfRequest(`/zones/${domain.id}/dns_records`, { params: {} })
-          .then((res: any) => Array.isArray(res) ? res.length : 0)
+      const dnsPromises = domains.slice(0, 10).map((domain: Zone) => 
+        cfRequest<DNSRecordsResponse>(`/zones/${domain.id}/dns_records`, { params: {} })
+          .then((res: DNSRecordsResponse) => Array.isArray(res) ? res.length : (res?.result?.length || 0))
           .catch(() => 0)
       );
       const dnsRecordCounts = await Promise.all(dnsPromises);
