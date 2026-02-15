@@ -1,13 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { AuthRequest } from './auth';
+import { logger } from '../utils/logger';
 
 export function logOperation(action: string, module: string, getResource?: (req: Request) => string) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     const originalSend = res.send;
     
     res.send = function(body: any) {
-      // 异步记录日志，不阻塞响应
+      // Async logging without blocking response
       if (req.user) {
         const resource = getResource ? getResource(req) : req.originalUrl;
         
@@ -27,7 +28,13 @@ export function logOperation(action: string, module: string, getResource?: (req:
             ip: req.ip,
             userAgent: req.get('user-agent'),
           }
-        }).catch(err => console.error('日志记录失败:', err));
+        }).catch(err => {
+          logger.error('Failed to log operation', err as Error, {
+            userId: req.user?.id,
+            action,
+            module,
+          });
+        });
       }
       
       originalSend.call(this, body);

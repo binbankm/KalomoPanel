@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { logger } from '../utils/logger';
 
 export interface ApiError extends Error {
   statusCode?: number;
@@ -11,12 +12,17 @@ export function errorHandler(
   res: Response,
   next: NextFunction
 ) {
-  console.error('Error:', err);
+  logger.error('Error occurred', err, {
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+  });
 
   const statusCode = err.statusCode || 500;
   const message = err.message || '服务器内部错误';
 
   res.status(statusCode).json({
+    success: false,
     error: message,
     code: err.code,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })

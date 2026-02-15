@@ -1,10 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import dotenv from 'dotenv';
 
 import { errorHandler } from './middleware/error';
+import { standardLimiter, authLimiter, sanitizeInputs, requestSizeValidator } from './middleware/security';
 import { authRouter } from './routes/auth';
 import { userRouter } from './routes/users';
 import { roleRouter } from './routes/roles';
@@ -19,61 +20,134 @@ import { pagesRouter } from './routes/pages';
 import { r2Router } from './routes/r2';
 import { settingsRouter } from './routes/settings';
 import { logsRouter } from './routes/logs';
+import { validateEnv } from './utils/validation';
+import { logger } from './utils/logger';
+import { cache } from './utils/cache';
 
+// Load and validate environment variables
 dotenv.config();
+
+try {
+  validateEnv();
+  logger.info('Environment variables validated successfully');
+} catch (error) {
+  logger.error('Environment validation failed', error as Error);
+  process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 安全中间件
-app.use(helmet());
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:5173'],
-  credentials: true
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
 }));
 
-// 限流
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15分钟
-  max: 100, // 每个IP限制100个请求
-  message: { error: '请求过于频繁，请稍后再试' }
-});
-app.use(limiter);
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.CORS_ORIGIN?.split(',') || false
+    : ['http://localhost:5173'],
+  credentials: true,
+}));
 
-// 解析JSON
+// Enable response compression
+app.use(compression());
+
+// Input sanitization
+app.use(sanitizeInputs);
+
+// Request size validation
+app.use(requestSizeValidator(10));
+
+// Parse JSON with size limits
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 健康检查
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const healthStatus = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    cache: cache.stats(),
+  };
+  res.json(healthStatus);
 });
 
-// API路由
-app.use('/api/auth', authRouter);
-app.use('/api/users', userRouter);
-app.use('/api/roles', roleRouter);
-app.use('/api/domains', domainRouter);
-app.use('/api/dns', dnsRouter);
-app.use('/api/ssl', sslRouter);
-app.use('/api/firewall', firewallRouter);
-app.use('/api/analytics', analyticsRouter);
-app.use('/api/workers', workersRouter);
-app.use('/api/kv', kvRouter);
-app.use('/api/pages', pagesRouter);
-app.use('/api/r2', r2Router);
-app.use('/api/settings', settingsRouter);
-app.use('/api/logs', logsRouter);
+// Cache stats endpoint (development only)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/cache/stats', (req, res) => {
+    res.json(cache.stats());
+  });
+}
 
-// 错误处理
+// API routes - apply standard rate limiting to all routes
+app.use('/api/auth', authLimiter, authRouter);
+app.use('/api/users', standardLimiter, userRouter);
+app.use('/api/roles', standardLimiter, roleRouter);
+app.use('/api/domains', standardLimiter, domainRouter);
+app.use('/api/dns', standardLimiter, dnsRouter);
+app.use('/api/ssl', standardLimiter, sslRouter);
+app.use('/api/firewall', standardLimiter, firewallRouter);
+app.use('/api/analytics', standardLimiter, analyticsRouter);
+app.use('/api/workers', standardLimiter, workersRouter);
+app.use('/api/kv', standardLimiter, kvRouter);
+app.use('/api/pages', standardLimiter, pagesRouter);
+app.use('/api/r2', standardLimiter, r2Router);
+app.use('/api/settings', standardLimiter, settingsRouter);
+app.use('/api/logs', standardLimiter, logsRouter);
+
+// Error handling middleware
 app.use(errorHandler);
 
-// 404处理
+// 404 handler
 app.use((req, res) => {
-  res.status(404).json({ error: '接口不存在' });
+  logger.warn('Route not found', {
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+  });
+  res.status(404).json({ 
+    success: false,
+    error: 'Endpoint not found',
+    path: req.path,
+  });
 });
 
-app.listen(PORT, () => {
-  console.log(`服务器运行在端口 ${PORT}`);
-  console.log(`环境: ${process.env.NODE_ENV || 'development'}`);
+// Graceful shutdown handler
+const server = app.listen(PORT, () => {
+  logger.info('Server started', {
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    nodeVersion: process.version,
+  });
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
 });

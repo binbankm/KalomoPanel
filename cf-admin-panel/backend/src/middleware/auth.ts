@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/database';
+import { cache, CacheKeys } from '../utils/cache';
+import { logger } from '../utils/logger';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
@@ -36,25 +38,34 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     const token = authHeader.substring(7);
     const decoded = verifyToken(token);
 
-    // 获取用户权限
-    const userWithRole = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      include: {
-        role: {
-          include: {
-            permissions: {
-              include: { permission: true }
+    // Try to get user permissions from cache first
+    const cacheKey = CacheKeys.userPermissions(decoded.userId);
+    let permissions = cache.get<string[]>(cacheKey);
+
+    if (!permissions) {
+      // Cache miss - fetch from database
+      const userWithRole = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        include: {
+          role: {
+            include: {
+              permissions: {
+                include: { permission: true }
+              }
             }
           }
         }
+      });
+
+      if (!userWithRole || userWithRole.status !== 'ACTIVE') {
+        return res.status(401).json({ error: '用户不存在或已被禁用' });
       }
-    });
 
-    if (!userWithRole || userWithRole.status !== 'ACTIVE') {
-      return res.status(401).json({ error: '用户不存在或已被禁用' });
+      permissions = userWithRole.role.permissions.map((rp: { permission: { code: string } }) => rp.permission.code);
+      
+      // Cache permissions for 5 minutes
+      cache.set(cacheKey, permissions, 5 * 60 * 1000);
     }
-
-    const permissions = userWithRole.role.permissions.map((rp: { permission: { code: string } }) => rp.permission.code);
 
     req.user = {
       id: decoded.userId,
@@ -66,11 +77,14 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
+      logger.warn('Invalid JWT token', { error: (error as Error).message });
       return res.status(401).json({ error: '无效的认证令牌' });
     }
     if (error instanceof jwt.TokenExpiredError) {
+      logger.warn('JWT token expired', { error: (error as Error).message });
       return res.status(401).json({ error: '认证令牌已过期' });
     }
+    logger.error('Authentication failed', error as Error);
     return res.status(500).json({ error: '认证失败' });
   }
 }

@@ -1,14 +1,17 @@
 import { CF_CONFIG, getCfHeaders, getCloudflareConfig } from '../config/cloudflare';
+import { logger } from './logger';
+import { cache, CacheKeys } from './cache';
 
 interface CfRequestOptions {
   method?: string;
   body?: string;
   headers?: Record<string, string>;
   params?: Record<string, any>;
+  skipCache?: boolean;
 }
 
 export async function cfRequest<T>(endpoint: string, options: CfRequestOptions = {}): Promise<T> {
-  const { params, ...fetchOptions } = options;
+  const { params, skipCache = false, ...fetchOptions } = options;
   
   let url = `${CF_CONFIG.baseUrl}${endpoint}`;
   
@@ -18,34 +21,71 @@ export async function cfRequest<T>(endpoint: string, options: CfRequestOptions =
       url += queryString;
     }
   }
+
+  // Check cache for GET requests
+  if (fetchOptions.method !== 'POST' && fetchOptions.method !== 'PUT' && 
+      fetchOptions.method !== 'DELETE' && !skipCache) {
+    const cached = cache.get<T>(url);
+    if (cached) {
+      logger.debug('Cache hit for Cloudflare API request', { url });
+      return cached;
+    }
+  }
   
-  // 获取动态 headers（支持 API Token 和 Global API Key）
+  // Get dynamic headers (supports API Token and Global API Key)
   const cfHeaders = await getCfHeaders();
   
-  // 合并 headers
+  // Merge headers
   const mergedHeaders: Record<string, string> = {
     ...cfHeaders,
     ...fetchOptions.headers,
   };
   
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers: mergedHeaders,
-  });
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      headers: mergedHeaders,
+    });
 
-  const data: any = await response.json();
+    const data: any = await response.json();
 
-  if (!data.success) {
-    const error = data.errors?.[0] || { message: 'Unknown error' };
-    throw new Error(error.message);
+    if (!data.success) {
+      const error = data.errors?.[0] || { message: 'Unknown error' };
+      logger.error('Cloudflare API error', new Error(error.message), {
+        endpoint,
+        code: error.code,
+      });
+      throw new Error(error.message);
+    }
+
+    // Cache GET requests for 2 minutes
+    if (fetchOptions.method !== 'POST' && fetchOptions.method !== 'PUT' && 
+        fetchOptions.method !== 'DELETE' && !skipCache) {
+      cache.set(url, data.result, 2 * 60 * 1000);
+    }
+
+    return data.result as T;
+  } catch (error) {
+    logger.error('Cloudflare API request failed', error as Error, {
+      url,
+      method: fetchOptions.method || 'GET',
+    });
+    throw error;
   }
-
-  return data.result as T;
 }
 
-// 获取 Account ID（从数据库或环境变量）
+// Get Account ID (from database or environment)
 export async function getAccountId(): Promise<string> {
+  const cacheKey = CacheKeys.cfConfig();
+  const cached = cache.get<{ accountId: string }>(cacheKey);
+  
+  if (cached) {
+    return cached.accountId;
+  }
+
   const config = await getCloudflareConfig();
+  cache.set(cacheKey, { accountId: config.accountId }, 10 * 60 * 1000);
+  
   return config.accountId;
 }
 

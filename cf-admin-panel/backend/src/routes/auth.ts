@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { prisma } from '../config/database';
 import { generateToken, authenticate, AuthRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/error';
+import { strongPasswordSchema } from '../utils/validation';
+import { logger } from '../utils/logger';
+import { cache, CacheKeys } from '../utils/cache';
 
 const router = Router();
 
@@ -14,10 +17,10 @@ const loginSchema = z.object({
 
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1, '原密码不能为空'),
-  newPassword: z.string().min(6, '新密码至少6位'),
+  newPassword: strongPasswordSchema,
 });
 
-// 登录
+// Login endpoint
 router.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = loginSchema.parse(req.body);
 
@@ -35,20 +38,23 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   if (!user) {
+    logger.warn('Login failed: user not found', { username, ip: req.ip });
     return res.status(401).json({ error: '用户名或密码错误' });
   }
 
   if (user.status !== 'ACTIVE') {
+    logger.warn('Login failed: account disabled', { username, status: user.status });
     return res.status(401).json({ error: '账户已被禁用' });
   }
 
   const isValidPassword = await bcrypt.compare(password, user.password);
   
   if (!isValidPassword) {
+    logger.warn('Login failed: invalid password', { username, ip: req.ip });
     return res.status(401).json({ error: '用户名或密码错误' });
   }
 
-  // 更新最后登录时间
+  // Update last login time
   await prisma.user.update({
     where: { id: user.id },
     data: { lastLoginAt: new Date() }
@@ -56,6 +62,15 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = generateToken(user.id, user.username, user.roleId);
   const permissions = user.role.permissions.map(rp => rp.permission.code);
+
+  // Cache user permissions
+  cache.set(CacheKeys.userPermissions(user.id), permissions, 5 * 60 * 1000);
+
+  logger.info('User logged in successfully', { 
+    userId: user.id, 
+    username: user.username,
+    ip: req.ip,
+  });
 
   res.json({
     token,
@@ -111,7 +126,7 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res) => {
   });
 }));
 
-// 修改密码
+// Change password endpoint
 router.post('/change-password', authenticate, asyncHandler(async (req: AuthRequest, res) => {
   const { oldPassword, newPassword } = changePasswordSchema.parse(req.body);
 
@@ -126,21 +141,39 @@ router.post('/change-password', authenticate, asyncHandler(async (req: AuthReque
   const isValidPassword = await bcrypt.compare(oldPassword, user.password);
   
   if (!isValidPassword) {
+    logger.warn('Password change failed: invalid old password', {
+      userId: req.user!.id,
+    });
     return res.status(400).json({ error: '原密码错误' });
   }
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  // Use higher cost factor for better security
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
 
   await prisma.user.update({
     where: { id: req.user!.id },
     data: { password: hashedPassword }
   });
 
+  // Invalidate user cache after password change
+  cache.invalidate(CacheKeys.userPermissions(req.user!.id));
+
+  logger.info('Password changed successfully', {
+    userId: req.user!.id,
+  });
+
   res.json({ message: '密码修改成功' });
 }));
 
-// 登出（前端清除token即可，这里可用于记录日志）
+// Logout endpoint
 router.post('/logout', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+  // Invalidate cached permissions on logout
+  cache.invalidate(CacheKeys.userPermissions(req.user!.id));
+  
+  logger.info('User logged out', {
+    userId: req.user!.id,
+  });
+  
   res.json({ message: '登出成功' });
 }));
 
